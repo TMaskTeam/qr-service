@@ -14,8 +14,10 @@ describe('QrCodeController', () => {
 			expiresAt: '2026-05-15T23:59:59.999Z',
 		};
 
+		const executeMock = jest.fn<() => Promise<QrCodeRecord>>().mockResolvedValue(record);
+
 		const controller = new QrCodeController({
-			execute: jest.fn().mockResolvedValue(record),
+			execute: executeMock,
 		} as unknown as DailyQrCodeUseCase);
 
 		const result = await controller.getDailyQrCode('client-001', 'business-001', 'program-001');
