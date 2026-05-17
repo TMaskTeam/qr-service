@@ -1,105 +1,98 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { QrCodeRecord } from '../../domain/entities/qr-code.entity';
 import {
-  NOW_PROVIDER,
-  QR_CODE_REPOSITORY,
-  TOKEN_GENERATOR,
-  type NowProvider,
-  type QrCodeRepository,
-  type TokenGenerator
+	NOW_PROVIDER,
+	QR_CODE_REPOSITORY,
+	TOKEN_GENERATOR,
+	type NowProvider,
+	type QrCodeRepository,
+	type TokenGenerator,
 } from '../../domain/ports/qr-code.repository';
 
 export interface GetDailyQrCodeCommand {
-  clientId: string;
-  businessId: string;
-  programId?: string;
+	clientId: string;
 }
 
 @Injectable()
 export class DailyQrCodeUseCase {
-  private readonly maxAttempts = Number(process.env.QR_TOKEN_MAX_ATTEMPTS ?? 10);
+	private readonly maxAttempts = Number(process.env.QR_TOKEN_MAX_ATTEMPTS ?? 10);
 
-  constructor(
-    @Inject(QR_CODE_REPOSITORY)
-    private readonly repository: QrCodeRepository,
-    @Inject(TOKEN_GENERATOR)
-    private readonly tokenGenerator: TokenGenerator,
-    @Inject(NOW_PROVIDER)
-    private readonly nowProvider: NowProvider
-  ) {}
+	constructor(
+		@Inject(QR_CODE_REPOSITORY)
+		private readonly repository: QrCodeRepository,
+		@Inject(TOKEN_GENERATOR)
+		private readonly tokenGenerator: TokenGenerator,
+		@Inject(NOW_PROVIDER)
+		private readonly nowProvider: NowProvider,
+	) {}
 
-  async execute(command: GetDailyQrCodeCommand): Promise<QrCodeRecord> {
-    this.assertCommand(command);
+	async execute(command: GetDailyQrCodeCommand): Promise<QrCodeRecord> {
+		this.assertCommand(command);
 
-    const now = this.nowProvider();
-    const dailyKey = createDailyKey(command, now);
-    const ttlSeconds = secondsUntilEndOfDay(now);
-    const existingToken = await this.repository.findDailyToken(dailyKey);
+		const now = this.nowProvider();
+		const dailyKey = createDailyKey(command, now);
+		const ttlSeconds = secondsUntilEndOfDay(now);
 
-    if (existingToken) {
-      const existingRecord = await this.repository.findByToken(existingToken);
+		const existingToken = await this.repository.findDailyToken(dailyKey);
 
-      if (existingRecord) {
-        return existingRecord;
-      }
-    }
+		if (existingToken) {
+			const existingRecord = await this.repository.findByToken(existingToken);
 
-    const qrToken = await this.createUniqueToken();
-    const record: QrCodeRecord = {
-      qrToken,
-      clientId: command.clientId,
-      businessId: command.businessId,
-      programId: command.programId,
-      createdAt: now.toISOString(),
-      expiresAt: endOfDay(now).toISOString()
-    };
+			if (existingRecord) {
+				return existingRecord;
+			}
+		}
 
-    await this.repository.save(record, ttlSeconds);
-    await this.repository.saveDailyToken(dailyKey, qrToken, ttlSeconds);
+		const qrToken = await this.createUniqueToken();
 
-    return record;
-  }
+		const record: QrCodeRecord = {
+			qrToken,
+			clientId: command.clientId,
+			createdAt: now.toISOString(),
+			expiresAt: endOfDay(now).toISOString(),
+		} as QrCodeRecord;
 
-  private async createUniqueToken() {
-    for (let attempt = 0; attempt < this.maxAttempts; attempt += 1) {
-      const qrToken = this.tokenGenerator();
-      const existing = await this.repository.findByToken(qrToken);
+		await this.repository.save(record, ttlSeconds);
+		await this.repository.saveDailyToken(dailyKey, qrToken, ttlSeconds);
 
-      if (!existing) {
-        return qrToken;
-      }
-    }
+		return record;
+	}
 
-    throw new Error('Unable to generate unique QR token');
-  }
+	private async createUniqueToken() {
+		for (let attempt = 0; attempt < this.maxAttempts; attempt += 1) {
+			const qrToken = this.tokenGenerator();
+			const existing = await this.repository.findByToken(qrToken);
 
-  private assertCommand(command: GetDailyQrCodeCommand) {
-    if (!command.clientId?.trim()) {
-      throw new Error('clientId is required');
-    }
+			if (!existing) {
+				return qrToken;
+			}
+		}
 
-    if (!command.businessId?.trim()) {
-      throw new Error('businessId is required');
-    }
-  }
+		throw new Error('Unable to generate unique QR token');
+	}
+
+	private assertCommand(command: GetDailyQrCodeCommand) {
+		if (!command.clientId?.trim()) {
+			throw new Error('clientId is required');
+		}
+	}
 }
 
 export function createDailyKey(command: GetDailyQrCodeCommand, date: Date) {
-  const day = date.toISOString().slice(0, 10);
-  const program = command.programId ?? 'default';
+	const day = date.toISOString().slice(0, 10);
 
-  return `qr:daily:${command.clientId}:${command.businessId}:${program}:${day}`;
+	return `qr:daily:${command.clientId}:${day}`;
 }
 
 export function secondsUntilEndOfDay(date: Date) {
-  const diff = endOfDay(date).getTime() - date.getTime();
+	const diff = endOfDay(date).getTime() - date.getTime();
 
-  return Math.max(1, Math.ceil(diff / 1000));
+	return Math.max(1, Math.ceil(diff / 1000));
 }
 
 function endOfDay(date: Date) {
-  const end = new Date(date);
-  end.setUTCHours(23, 59, 59, 999);
+	const end = new Date(date);
+	end.setUTCHours(23, 59, 59, 999);
 
-  return end;
+	return end;
 }
