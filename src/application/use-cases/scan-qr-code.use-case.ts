@@ -1,5 +1,4 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { QrCodeRecord } from '../../domain/entities/qr-code.entity';
 import { QR_CODE_REPOSITORY, type QrCodeRepository } from '../../domain/ports/qr-code.repository';
 
 export interface ScanQrCodeCommand {
